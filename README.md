@@ -22,7 +22,7 @@ pip install -e .
 
 | 配置项 | 说明 | 默认值 |
 | ------ | ---- | ------ |
-| `languages` | 选择一个或多个语言（如 `python javascript go`），使用 `all` 或留空表示所有语言。 | `all` |
+| `languages` | 选择一个或多个语言（如 `python javascript go`），使用 `all` 或留空表示所有语言。当前支持：`python`、`javascript`、`typescript`、`go`、`java`、`c`、`c++`、`c#`、`rust`、`ruby`、`php`、`swift`、`kotlin`、`scala`、`dart`、`css`、`shell`、`haskell`、`elixir`、`clojure`、`r`、`perl`、`objective-c`。 | `all` |
 | `limit` | 返回热门仓库数量，范围 1~100。 | `10` |
 | `timeframe` | Trending 时间窗口，支持 `daily`、`weekly`、`monthly`。 | `daily` |
 | `GITHUB_TOKEN` | 可选，提供后可提升 GitHub API 速率限制。 | 未设置 |
