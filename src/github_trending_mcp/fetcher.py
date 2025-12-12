@@ -240,6 +240,10 @@ class TrendingService:
             total_stars = metadata.stargazers_count if metadata and metadata.stargazers_count is not None else row.total_stars
             forks = metadata.forks_count if metadata and metadata.forks_count is not None else row.forks
             updated_at = metadata.updated_at if metadata else None
+            # 当语言参数为 all 时，language_context 为空；此处尝试回填 primary_language 方便客户端识别。
+            effective_language = row.language_context or row.primary_language
+            if effective_language is None and is_all_mode:
+                effective_language = "all"
             repos.append(
                 TrendingRepository(
                     rank=idx,
@@ -248,7 +252,7 @@ class TrendingService:
                     repo_url=repo_url,
                     timeframe=row.timeframe,
                     rank_in_context=row.rank_in_context,
-                    language_context=row.language_context,
+                    language_context=effective_language,
                     description=description,
                     primary_language=row.primary_language,
                     total_stars=total_stars,
