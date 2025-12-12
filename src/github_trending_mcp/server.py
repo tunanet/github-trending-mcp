@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 from typing import Any, Dict, List, Optional
 
 from .constants import DEFAULT_LIMIT, DEFAULT_TIMEFRAME, SUPPORTED_TIMEFRAMES
@@ -34,6 +35,7 @@ def _parse_languages_argument(raw_languages: Optional[Any]) -> Optional[List[str
         return None
     normalized: List[str] = []
     def _split_entry(entry: str) -> List[str]:
+        # 先统一把逗号替换为空格，再按空格分割，可兼容 "python,go" 与 "python go"。
         replaced = entry.replace(",", " ")
         return [segment.strip() for segment in replaced.split() if segment.strip()]
 
@@ -84,6 +86,36 @@ def run_server(args: argparse.Namespace) -> None:
             "运行 MCP 服务器需要先安装 'modelcontextprotocol'，可执行 `pip install modelcontextprotocol`。"
         )
     logging.basicConfig(level=logging.INFO)
+    transport_security = None
+    allowed_hosts = args.allowed_hosts or os.environ.get("MCP_ALLOWED_HOSTS")
+    allowed_origins = args.allowed_origins or os.environ.get("MCP_ALLOWED_ORIGINS")
+    if allowed_hosts or allowed_origins:
+        try:
+            from mcp.server.transport_security import TransportSecuritySettings
+        except ImportError:
+            raise RuntimeError("启用 Host/Origin 限制需要安装新版 mcp 包。") from None
+        normalized_hosts = [host.strip() for host in allowed_hosts.split(",")] if allowed_hosts else None
+        normalized_origins = [origin.strip() for origin in allowed_origins.split(",")] if allowed_origins else None
+        # 只有显式提供白名单才开启 Origin/Host 校验，默认保持向后兼容。
+        transport_security = TransportSecuritySettings(
+            enable_dns_rebinding_protection=True,
+            allowed_hosts=normalized_hosts,
+            allowed_origins=normalized_origins,
+        )
+    token = args.auth_token or os.environ.get("MCP_BEARER_TOKEN")
+    token_verifier = None
+    if token:
+        try:
+            from mcp.server.fastmcp import TokenVerifier
+        except ImportError as exc:
+            raise RuntimeError("启用 Bearer 鉴权需要安装新版 mcp 包。") from exc
+
+        class StaticTokenVerifier(TokenVerifier):
+            def verify(self, token_value: str, scopes: Optional[List[str]] = None) -> bool:  # type: ignore[override]
+                """简单的常量令牌校验，适合自托管场景。"""
+                return token_value == token
+
+        token_verifier = StaticTokenVerifier()
     server = FastMCPServer(
         "github-trending-repos-mcp",
         host=args.host,
@@ -92,6 +124,8 @@ def run_server(args: argparse.Namespace) -> None:
         sse_path=args.sse_path,
         message_path=args.message_path,
         streamable_http_path=args.streamable_http_path,
+        token_verifier=token_verifier,
+        transport_security=transport_security,
     )
     _register_tools(server)
     server.run(transport=args.transport)
@@ -141,6 +175,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--streamable-http-path",
         default="/mcp",
         help="使用 streamable-http 传输时的 HTTP Endpoint 路径",
+    )
+    parser.add_argument(
+        "--auth-token",
+        help="可选：启用 Bearer Token 鉴权时使用的固定令牌（也可通过 MCP_BEARER_TOKEN 环境变量）",
+    )
+    parser.add_argument(
+        "--allowed-hosts",
+        help="可选：限制访问的 Host 列表（逗号分隔），可用 MCP_ALLOWED_HOSTS 环境变量覆盖",
+    )
+    parser.add_argument(
+        "--allowed-origins",
+        help="可选：限制访问的 Origin 列表（逗号分隔），可用 MCP_ALLOWED_ORIGINS 环境变量覆盖",
     )
     return parser
 

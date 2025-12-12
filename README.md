@@ -58,11 +58,18 @@ python -m github_trending_mcp.server --transport streamable-http --host 0.0.0.0 
 
 - SSE 模式下客户端会访问 `GET http://<host>:<port>/sse` 建立流，并向 `POST http://<host>:<port>/messages/` 发送指令；`--mount-path` 可把整个传输挂载到子路径（例如 `/github`）。
 - n8n MCP Client 节点中只需把 `Endpoint URL` 设置为 `http://<公网地址>:8765`（或反向代理后的地址），其默认的 `/sse` 与 `/messages/` 路径即可直接命中上面的服务；如果自定义了 `--sse-path`、`--message-path`，则在 n8n 中一并调整即可。
-- Streamable HTTP 模式同样兼容 MCP 规范，单个 `POST http://<host>:<port>/mcp`（默认路径可通过 `--streamable-http-path` 修改）即可完成往返通信。
+- Streamable HTTP 模式同样兼容 MCP 规范，单个 `POST http://<host>:<port>/mcp`（默认路径可通过 `--streamable-http-path` 修改）即可完成往返通信；建议在对外暴露时配置 `--auth-token` 与 `--allowed-origins`/`--allowed-hosts` 增强安全性。
 - `fetch_trending_repositories` 与 `list_trending_languages` 现在都会直接返回结构化 JSON，MCP 客户端（包括 n8n）可以无需再解析文本，直接按字段读取。
 - 当一次传入多个语言时，会按照 `limit` 平均分配给每个语言（余数依次分给前若干个语言），确保“python 与 go 各取 5 条”这类需求变为可能；若某个语言不足指定数量，会尽可能补齐其它语言。
 
 > 小贴士：`--host`、`--port`、`--mount-path`、`--sse-path`、`--message-path` 与 `--streamable-http-path` 也能作用在 `stdio` 模式以外的任何传输，便于在反向代理或多实例环境下部署。
+
+### 安全配置（可选）
+
+- `--auth-token` / 环境变量 `MCP_BEARER_TOKEN`：开启后必须携带 `Authorization: Bearer <token>` 才能调用 MCP 端点，适用于 n8n 等需要基础鉴权的场景。
+- `--allowed-hosts` / `MCP_ALLOWED_HOSTS`：限制请求的 Host（`host:port` 形式，逗号分隔）；例如 `example.com:8000,localhost:8000`。
+- `--allowed-origins` / `MCP_ALLOWED_ORIGINS`：限制浏览器 `Origin` 头，防止 CSRF，一般填 `https://n8n.example.com` 这类地址。
+- 未配置上述参数时保持向后兼容，不做额外校验。若部署到公网，强烈建议至少开启 `--auth-token` 并通过反向代理限制来源。
 
 ## CLI 调试模式
 
@@ -75,6 +82,13 @@ python -m github_trending_mcp.server --cli --languages "python, go" --limit 20 -
 命令会在终端输出 JSON，其中包含排名、趋势增量、星标、fork、更新时间等字段。
 
 > 本仓库默认忽略 `tests/` 目录。如需运行本地单测，可先执行 `pip install -r requirements.txt`（或 `pip install pytest`）并运行 `python -m pytest tests/`，其中示例用例位于 `tests/test_trending_service.py`（不会随仓库同步，需自行维护或复制）。
+
+## 本地测试
+
+1. 准备虚拟环境：`python -m venv .venv && source .venv/bin/activate && pip install -e . && pip install pytest`。
+2. 复制或编写测试文件到 `tests/`（仓库默认忽略，可根据需要自行维护）。
+3. 运行 `python -m pytest` 或 `pytest tests/`，即可对多语言限额逻辑、MCP 工具等核心模块做回归。
+4. 若要调试 HTTP/SSE，可在本地运行 `python -m github_trending_mcp.http_server --reload`，再通过 curl 或浏览器验证。
 
 ## HTTP / SSE 服务
 
@@ -119,6 +133,7 @@ docker run --rm -p 8000:8000 -e GITHUB_TOKEN=ghp_xxx github-trending-mcp
 > - 默认命令为 `github-trending-mcp --transport streamable-http --streamable-http-path /mcp`，客户端只需调用 `POST http://<host>:8000/mcp` 即可。
 > - 若想改回 SSE 传输（`/sse` + `/messages/`），可在 Dockerfile 或 `docker run` 时把命令切换为 `github-trending-mcp --transport sse ...`。
 > - 如果要运行 HTTP/SSE REST API（`/trending` 等），请改用 `github-trending-mcp-http`；若需要 stdio MCP，则使用 `github-trending-mcp` 并连接 stdin/stdout。
+> - 对外部署时可通过 `MCP_BEARER_TOKEN`、`MCP_ALLOWED_HOSTS`、`MCP_ALLOWED_ORIGINS`（或 CLI 中的 `--auth-token`、`--allowed-hosts`、`--allowed-origins`）启用鉴权与 Host/Origin 限制。
 
 ## 开发说明
 

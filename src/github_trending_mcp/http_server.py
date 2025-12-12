@@ -60,6 +60,7 @@ def _create_stream(
                     yield _format_sse(payload.to_dict())
                 if interval is None:
                     break
+                # SSE 的刷新间隔完全由用户指定，附带 try/finally 以确保 service 释放。
                 await asyncio.sleep(interval)
         finally:
             service.close()

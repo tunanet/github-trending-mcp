@@ -186,6 +186,7 @@ class TrendingService:
                     languages_to_fetch.append(language)
         else:
             languages_to_fetch.append(None)
+        # all_mode 表示不区分语言，limit 即总条数；否则按语言配额抓取，最后用 overall_limit 限制绝对上限。
         is_all_mode = len(languages_to_fetch) == 1 and languages_to_fetch[0] is None
         intended_total = per_language_limit if is_all_mode else per_language_limit * len(languages_to_fetch)
         overall_limit = min(intended_total, MAX_LIMIT if is_all_mode else MAX_LIMIT * len(languages_to_fetch))
@@ -211,6 +212,7 @@ class TrendingService:
                     break
             if len(languages_to_fetch) > 1 and not is_all_mode and remaining > 0 and idx < len(languages_to_fetch) - 1:
                 time.sleep(0.5)
+        # 第二轮用于补齐“配额不足”的语言，但仍会检查每种语言的上限，避免单一语言无限扩张。
         if remaining > 0 and not is_all_mode:
             for language in languages_to_fetch:
                 if remaining <= 0:
@@ -258,6 +260,7 @@ class TrendingService:
             )
             if len(repos) >= overall_limit:
                 break
+        # metadata_block 中记录原始请求、有效配额与模式，方便客户端调试/展示。
         metadata_block: Dict[str, Any] = {
             "timeframe": timeframe,
             "languages": normalized_languages or ["all"],
