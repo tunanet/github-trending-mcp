@@ -1,0 +1,3 @@
+[console_scripts]
+github-trending-mcp = github_trending_mcp.server:main
+github-trending-mcp-http = github_trending_mcp.http_server:main

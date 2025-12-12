@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "github-trending-mcp"
+version = "0.1.0"
+description = "面向 GitHub Trending 仓库并支持个性化筛选的 MCP 服务器"
+authors = [
+  {name = "Content Aggregation Team"}
+]
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+dependencies = [
+  "modelcontextprotocol>=0.1.0",
+  "requests>=2.32.0",
+  "beautifulsoup4>=4.12.0",
+  "fastapi>=0.111.0",
+  "uvicorn>=0.20.0"
+]
+
+[project.scripts]
+github-trending-mcp = "github_trending_mcp.server:main"
+github-trending-mcp-http = "github_trending_mcp.http_server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
