@@ -58,6 +58,7 @@ class TrendingRepository:
 
     def to_dict(self) -> Dict[str, Any]:
         """转为 JSON 友好的字典结构。"""
+        effective_language = self.language_context or self.primary_language or "all"
         return {
             "rank": self.rank,
             "owner": self.owner,
@@ -65,7 +66,7 @@ class TrendingRepository:
             "repo_url": self.repo_url,
             "timeframe": self.timeframe,
             "rank_in_context": self.rank_in_context,
-            "language_context": self.language_context,
+            "language_context": effective_language,
             "description": self.description,
             "primary_language": self.primary_language,
             "total_stars": self.total_stars,
