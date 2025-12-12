@@ -107,18 +107,21 @@ def run_server(args: argparse.Namespace) -> None:
     auth_settings = None
     if token:
         try:
+            from mcp.server.auth.provider import AccessToken, TokenVerifier
             from mcp.server.auth.settings import AuthSettings
         except ImportError as exc:
             raise RuntimeError("启用 Bearer 鉴权需要安装新版 mcp 包。") from exc
 
-        class StaticTokenVerifier:
-            """无需依赖 mcp 内置类型的 Token 验证器，保证旧版 SDK 也可使用。"""
+        class StaticTokenVerifier(TokenVerifier):
+            """返回 AccessToken，以满足 FastMCP 的鉴权中间件。"""
 
             def __init__(self, expected: str) -> None:
                 self._expected = expected
 
-            def verify(self, token_value: str, scopes: Optional[List[str]] = None) -> bool:  # type: ignore[unused-argument]
-                return token_value == self._expected
+            async def verify_token(self, token_value: str) -> AccessToken | None:
+                if token_value != self._expected:
+                    return None
+                return AccessToken(token=token_value, client_id="static-token", scopes=[])
 
         token_verifier = StaticTokenVerifier(token)
         issuer = args.auth_issuer or os.environ.get("MCP_AUTH_ISSUER", "https://github-trending-mcp.local/issuer")
