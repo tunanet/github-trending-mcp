@@ -89,14 +89,11 @@ github-trending-mcp-http --host 0.0.0.0 --port 8000
 
 ```bash
 docker build -t github-trending-mcp .
-docker run --rm -e GITHUB_TOKEN=ghp_xxx github-trending-mcp
-
-# 作为 HTTP/SSE 服务运行
-docker run --rm -p 8000:8000 -e GITHUB_TOKEN=ghp_xxx github-trending-mcp \
-  python -m github_trending_mcp.http_server --host 0.0.0.0 --port 8000
+# 镜像默认启动 HTTP/SSE 服务，映射 8000 端口即可
+docker run --rm -p 8000:8000 -e GITHUB_TOKEN=ghp_xxx github-trending-mcp
 ```
 
-在对接 MCP 兼容的宿主（如 Claude Desktop、Cursor 等）时，请根据各平台要求映射 stdin/stdout。
+如需改为 stdio MCP，可在 Dockerfile 末尾把 `CMD ["github-trending-mcp-http", ...]` 替换成注释里的 `CMD ["github-trending-mcp"]` 后重新 `docker build`。在对接 MCP 兼容的宿主（如 Claude Desktop、Cursor 等）时，记得根据其要求映射 stdin/stdout。
 
 ## 开发说明
 

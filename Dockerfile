@@ -12,5 +12,6 @@ COPY src ./src
 # 安装依赖并注册可执行脚本
 RUN pip install --no-cache-dir .
 
-# 通过 setuptools entry point 启动 MCP 服务器
-CMD ["github-trending-mcp"]
+# 默认以 HTTP/SSE 模式启动，如需 stdio MCP 可改为下方注释的命令
+CMD ["github-trending-mcp-http", "--host", "0.0.0.0", "--port", "8000"]
+# CMD ["github-trending-mcp"]
