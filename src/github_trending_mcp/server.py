@@ -27,6 +27,26 @@ def _format_json(data: Dict[str, Any]) -> str:
     return json.dumps(data, ensure_ascii=False, indent=2)
 
 
+def _parse_languages_argument(raw_languages: Optional[Any]) -> Optional[List[str]]:
+    """允许 languages 参数既可传列表也可传逗号字符串。"""
+
+    if raw_languages is None:
+        return None
+    normalized: List[str] = []
+    if isinstance(raw_languages, str):
+        candidates = [segment.strip() for segment in raw_languages.split(",") if segment.strip()]
+        return candidates or None
+    if isinstance(raw_languages, (list, tuple, set)):
+        for entry in raw_languages:
+            if not entry:
+                continue
+            if isinstance(entry, str):
+                parts = [segment.strip() for segment in entry.split(",") if segment.strip()]
+                normalized.extend(parts)
+        return normalized or None
+    raise ValueError("languages 参数需要是字符串或字符串列表。")
+
+
 def _register_tools(server: "FastMCPServer") -> None:
     """在 FastMCPServer 上挂载工具实现。"""
     service = build_service_from_env()
@@ -36,11 +56,12 @@ def _register_tools(server: "FastMCPServer") -> None:
         description="返回 GitHub Trending 热门仓库的结构化 JSON 数据。"
     )
     def fetch_trending_tool(
-        languages: Optional[List[str]] = None,
+        languages: Optional[Any] = None,
         limit: Optional[int] = None,
         timeframe: Optional[str] = None,
     ) -> Dict[str, Any]:
-        request = validate_inputs(languages, limit, timeframe)
+        parsed_languages = _parse_languages_argument(languages)
+        request = validate_inputs(parsed_languages, limit, timeframe)
         response = service.fetch(request)
         return response.to_dict()
 
@@ -75,7 +96,8 @@ def run_server(args: argparse.Namespace) -> None:
 def run_cli(args: argparse.Namespace) -> None:
     """在不接入 MCP 宿主时，直接打印 JSON 到终端。"""
     service = build_service_from_env()
-    request = validate_inputs(args.languages, args.limit, args.timeframe)
+    parsed_languages = _parse_languages_argument(args.languages)
+    request = validate_inputs(parsed_languages, args.limit, args.timeframe)
     response = service.fetch(request)
     print(_format_json(response.to_dict()))
 

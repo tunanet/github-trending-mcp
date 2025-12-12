@@ -7,7 +7,7 @@ import os
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional
 
 import requests
 from bs4 import BeautifulSoup
@@ -188,6 +188,7 @@ class TrendingService:
             languages_to_fetch.append(None)
         # 以 owner/name 作为唯一键，保持插入顺序以记录排名。
         aggregated: "OrderedDict[str, TrendingHTMLRow]" = OrderedDict()
+        language_rows: Dict[Optional[str], List[TrendingHTMLRow]] = {}
         if languages_to_fetch:
             base, extra = divmod(limit, len(languages_to_fetch))
         else:
@@ -200,6 +201,7 @@ class TrendingService:
             if per_language_limit <= 0:
                 continue
             rows = self.page_client.fetch(language, timeframe)
+            language_rows[language] = rows
             taken = 0
             for row in rows:
                 key = f"{row.owner.lower()}/{row.name.lower()}"
@@ -211,8 +213,24 @@ class TrendingService:
                 if taken >= per_language_limit or remaining <= 0:
                     break
             # 当存在多语言抓取时，稍作等待以避免触发 GitHub 风控。
-            if len(languages_to_fetch) > 1 and remaining > 0:
+            if len(languages_to_fetch) > 1 and remaining > 0 and idx < len(languages_to_fetch) - 1:
                 time.sleep(0.5)
+        # 若某些语言不足以填满配额，尝试将剩余 quota 回流给其它语言。
+        if remaining > 0:
+            for language in languages_to_fetch:
+                if remaining <= 0:
+                    break
+                rows = language_rows.get(language)
+                if not rows:
+                    continue
+                for row in rows:
+                    key = f"{row.owner.lower()}/{row.name.lower()}"
+                    if key in aggregated:
+                        continue
+                    aggregated[key] = row
+                    remaining -= 1
+                    if remaining <= 0:
+                        break
         repos: List[TrendingRepository] = []
         for idx, row in enumerate(aggregated.values(), start=1):
             metadata = self.api_client.fetch_repo(row.owner, row.name)

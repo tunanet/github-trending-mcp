@@ -22,7 +22,7 @@ pip install -e .
 
 | 配置项 | 说明 | 默认值 |
 | ------ | ---- | ------ |
-| `languages` | 选择一个或多个语言（如 `python javascript go`），使用 `all` 或留空表示所有语言。当前支持：`python`、`javascript`、`typescript`、`go`、`java`、`c`、`c++`、`c#`、`rust`、`ruby`、`php`、`swift`、`kotlin`、`scala`、`dart`、`css`、`shell`、`haskell`、`elixir`、`clojure`、`r`、`perl`、`objective-c`。 | `all` |
+| `languages` | 选择一个或多个语言，可用空格或逗号分隔（如 `python javascript go` 或 `"python, go"`），使用 `all` 或留空表示所有语言。当前支持：`python`、`javascript`、`typescript`、`go`、`java`、`c`、`c++`、`c#`、`rust`、`ruby`、`php`、`swift`、`kotlin`、`scala`、`dart`、`css`、`shell`、`haskell`、`elixir`、`clojure`、`r`、`perl`、`objective-c`。 | `all` |
 | `limit` | 返回热门仓库数量，范围 1~100。 | `10` |
 | `timeframe` | Trending 时间窗口，支持 `daily`、`weekly`、`monthly`。 | `daily` |
 | `GITHUB_TOKEN` | 可选，提供后可提升 GitHub API 速率限制。 | 未设置 |
@@ -69,7 +69,7 @@ python -m github_trending_mcp.server --transport streamable-http --host 0.0.0.0 
 为了便于排查或本地定时抓取，可直接运行 CLI：
 
 ```bash
-python -m github_trending_mcp.server --cli --languages python go --limit 20 --timeframe weekly
+python -m github_trending_mcp.server --cli --languages "python, go" --limit 20 --timeframe weekly
 ```
 
 命令会在终端输出 JSON，其中包含排名、趋势增量、星标、fork、更新时间等字段。
@@ -109,11 +109,14 @@ github-trending-mcp-http --host 0.0.0.0 --port 8000
 
 ```bash
 docker build -t github-trending-mcp .
-# 镜像默认启动 HTTP/SSE 服务，映射 8000 端口即可
+# 镜像默认以 MCP SSE 传输启动，映射 8000 端口即可
 docker run --rm -p 8000:8000 -e GITHUB_TOKEN=ghp_xxx github-trending-mcp
 ```
 
-如需改为 stdio MCP，可在 Dockerfile 末尾把 `CMD ["github-trending-mcp-http", ...]` 替换成注释里的 `CMD ["github-trending-mcp"]` 后重新 `docker build`。在对接 MCP 兼容的宿主（如 Claude Desktop、Cursor 等）时，记得根据其要求映射 stdin/stdout。
+> 说明：
+> - 当前 Dockerfile 默认执行 `github-trending-mcp --transport sse`，容器会暴露 `/sse` 与 `/messages/`，适合 n8n MCP Client、Claude 等远程 MCP 宿主。
+> - 如果想运行 HTTP/SSE REST API，请修改 Dockerfile 末尾的 `CMD` 为注释中的 `github-trending-mcp-http` 版本或在 `docker run` 时覆盖命令。
+> - 如需 stdio MCP，请在 Dockerfile 中使用 `CMD ["github-trending-mcp"]` 并在宿主侧映射 stdin/stdout。
 
 ## 开发说明
 
