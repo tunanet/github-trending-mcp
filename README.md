@@ -23,7 +23,7 @@ pip install -e .
 | 配置项 | 说明 | 默认值 |
 | ------ | ---- | ------ |
 | `languages` | 选择一个或多个语言，可用空格或逗号分隔（如 `python javascript go` 或 `"python, go"`），使用 `all` 或留空表示所有语言。当前支持：`python`、`javascript`、`typescript`、`go`、`java`、`c`、`c++`、`c#`、`rust`、`ruby`、`php`、`swift`、`kotlin`、`scala`、`dart`、`css`、`shell`、`haskell`、`elixir`、`clojure`、`r`、`perl`、`objective-c`。 | `all` |
-| `limit` | 返回热门仓库数量，范围 1~100。 | `10` |
+| `limit` | 返回热门仓库数量：1~100。当 `languages` 为 `all` 时仅抓取总计 `limit` 条；当传入多个具体语言时会尝试为每种语言各抓 `limit` 条，但总返回量受 `MAX_LIMIT`（100×语言数）保护。 | `10` |
 | `timeframe` | Trending 时间窗口，支持 `daily`、`weekly`、`monthly`。 | `daily` |
 | `GITHUB_TOKEN` | 可选，提供后可提升 GitHub API 速率限制。 | 未设置 |
 
@@ -74,6 +74,8 @@ python -m github_trending_mcp.server --cli --languages "python, go" --limit 20 -
 
 命令会在终端输出 JSON，其中包含排名、趋势增量、星标、fork、更新时间等字段。
 
+> 本仓库默认忽略 `tests/` 目录。如需运行本地单测，可先执行 `pip install -r requirements.txt`（或 `pip install pytest`）并运行 `python -m pytest tests/`，其中示例用例位于 `tests/test_trending_service.py`（不会随仓库同步，需自行维护或复制）。
+
 ## HTTP / SSE 服务
 
 除了 stdio MCP，还提供 FastAPI 实现的 HTTP 接口：
@@ -109,14 +111,14 @@ github-trending-mcp-http --host 0.0.0.0 --port 8000
 
 ```bash
 docker build -t github-trending-mcp .
-# 镜像默认以 MCP SSE 传输启动，映射 8000 端口即可
+# 镜像默认以 Streamable HTTP 传输启动，映射 8000 端口即可（POST /mcp）
 docker run --rm -p 8000:8000 -e GITHUB_TOKEN=ghp_xxx github-trending-mcp
 ```
 
 > 说明：
-> - 当前 Dockerfile 默认执行 `github-trending-mcp --transport sse`，容器会暴露 `/sse` 与 `/messages/`，适合 n8n MCP Client、Claude 等远程 MCP 宿主。
-> - 如果想运行 HTTP/SSE REST API，请修改 Dockerfile 末尾的 `CMD` 为注释中的 `github-trending-mcp-http` 版本或在 `docker run` 时覆盖命令。
-> - 如需 stdio MCP，请在 Dockerfile 中使用 `CMD ["github-trending-mcp"]` 并在宿主侧映射 stdin/stdout。
+> - 默认命令为 `github-trending-mcp --transport streamable-http --streamable-http-path /mcp`，客户端只需调用 `POST http://<host>:8000/mcp` 即可。
+> - 若想改回 SSE 传输（`/sse` + `/messages/`），可在 Dockerfile 或 `docker run` 时把命令切换为 `github-trending-mcp --transport sse ...`。
+> - 如果要运行 HTTP/SSE REST API（`/trending` 等），请改用 `github-trending-mcp-http`；若需要 stdio MCP，则使用 `github-trending-mcp` 并连接 stdin/stdout。
 
 ## 开发说明
 

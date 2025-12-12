@@ -7,7 +7,7 @@ import os
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 import requests
 from bs4 import BeautifulSoup
@@ -170,64 +170,63 @@ class TrendingService:
         timeframe = (request.timeframe or DEFAULT_TIMEFRAME).lower()
         if timeframe not in SUPPORTED_TIMEFRAMES:
             raise ValueError(f"不支持的时间窗口 '{request.timeframe}'，允许值：{SUPPORTED_TIMEFRAMES}")
-        limit = request.limit or DEFAULT_LIMIT
-        if limit <= 0:
+        requested_limit = request.limit or DEFAULT_LIMIT
+        if requested_limit <= 0:
             raise ValueError("limit 必须是正整数")
-        limit = min(limit, MAX_LIMIT)
+        per_language_limit = min(requested_limit, MAX_LIMIT)
         normalized_languages = [lang.lower() for lang in request.languages if lang]
         languages_to_fetch: List[Optional[str]] = []
         if normalized_languages:
-            for language in normalized_languages:
-                if language == "all":
-                    languages_to_fetch.append(None)
-                    continue
-                if language not in CURATED_LANGUAGES:
-                    raise ValueError(f"语言 '{language}' 不在策划的支持列表中")
-                languages_to_fetch.append(language)
+            if "all" in normalized_languages:
+                languages_to_fetch = [None]
+            else:
+                for language in normalized_languages:
+                    if language not in CURATED_LANGUAGES:
+                        raise ValueError(f"语言 '{language}' 不在策划的支持列表中")
+                    languages_to_fetch.append(language)
         else:
             languages_to_fetch.append(None)
-        # 以 owner/name 作为唯一键，保持插入顺序以记录排名。
+        is_all_mode = len(languages_to_fetch) == 1 and languages_to_fetch[0] is None
+        intended_total = per_language_limit if is_all_mode else per_language_limit * len(languages_to_fetch)
+        overall_limit = min(intended_total, MAX_LIMIT if is_all_mode else MAX_LIMIT * len(languages_to_fetch))
+        remaining = overall_limit
         aggregated: "OrderedDict[str, TrendingHTMLRow]" = OrderedDict()
         language_rows: Dict[Optional[str], List[TrendingHTMLRow]] = {}
-        if languages_to_fetch:
-            base, extra = divmod(limit, len(languages_to_fetch))
-        else:
-            base, extra = limit, 0
-        remaining = limit
         for idx, language in enumerate(languages_to_fetch):
             if remaining <= 0:
                 break
-            per_language_limit = base + (1 if idx < extra else 0)
-            if per_language_limit <= 0:
-                continue
             rows = self.page_client.fetch(language, timeframe)
             language_rows[language] = rows
             taken = 0
             for row in rows:
+                if not is_all_mode and taken >= per_language_limit:
+                    break
                 key = f"{row.owner.lower()}/{row.name.lower()}"
                 if key in aggregated:
                     continue
                 aggregated[key] = row
                 taken += 1
                 remaining -= 1
-                if taken >= per_language_limit or remaining <= 0:
+                if remaining <= 0:
                     break
-            # 当存在多语言抓取时，稍作等待以避免触发 GitHub 风控。
-            if len(languages_to_fetch) > 1 and remaining > 0 and idx < len(languages_to_fetch) - 1:
+            if len(languages_to_fetch) > 1 and not is_all_mode and remaining > 0 and idx < len(languages_to_fetch) - 1:
                 time.sleep(0.5)
-        # 若某些语言不足以填满配额，尝试将剩余 quota 回流给其它语言。
-        if remaining > 0:
+        if remaining > 0 and not is_all_mode:
             for language in languages_to_fetch:
                 if remaining <= 0:
                     break
                 rows = language_rows.get(language)
                 if not rows:
                     continue
+                taken = sum(1 for row in aggregated.values() if row.language_context == language)
                 for row in rows:
+                    if taken >= per_language_limit:
+                        break
                     key = f"{row.owner.lower()}/{row.name.lower()}"
                     if key in aggregated:
                         continue
                     aggregated[key] = row
+                    taken += 1
                     remaining -= 1
                     if remaining <= 0:
                         break
@@ -257,14 +256,21 @@ class TrendingService:
                     updated_at=updated_at,
                 )
             )
-            if len(repos) >= limit:
+            if len(repos) >= overall_limit:
                 break
-        metadata_block = {
+        metadata_block: Dict[str, Any] = {
             "timeframe": timeframe,
             "languages": normalized_languages or ["all"],
-            "limit": limit,
             "retrieved": len(repos),
+            "limit_mode": "shared" if is_all_mode else "per_language",
+            "requested_limit": requested_limit,
         }
+        if is_all_mode:
+            metadata_block["limit"] = per_language_limit
+        else:
+            metadata_block["limit_per_language"] = per_language_limit
+            metadata_block["limit_total"] = intended_total
+        metadata_block["effective_limit"] = overall_limit
         return TrendingResponse(repos=repos, metadata=metadata_block)
 
     def close(self) -> None:

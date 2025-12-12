@@ -12,7 +12,9 @@ COPY src ./src
 # 安装依赖并注册可执行脚本
 RUN pip install --no-cache-dir .
 
-# 默认以 FastMCP SSE 传输启动，便于 n8n 等客户端通过 /sse 对接 MCP
-CMD ["github-trending-mcp", "--transport", "sse", "--host", "0.0.0.0", "--port", "8000"]
-# 若要暴露 HTTP API，可改回下方命令：
+# 默认以 FastMCP Streamable HTTP 传输启动，客户端可走单一 /mcp Endpoint
+CMD ["github-trending-mcp", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8000", "--streamable-http-path", "/mcp"]
+# 如需 SSE 传输，可改为：
+# CMD ["github-trending-mcp", "--transport", "sse", "--host", "0.0.0.0", "--port", "8000"]
+# 若要暴露 REST/SSE HTTP API，可使用：
 # CMD ["github-trending-mcp-http", "--host", "0.0.0.0", "--port", "8000"]

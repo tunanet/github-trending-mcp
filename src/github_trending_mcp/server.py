@@ -28,20 +28,24 @@ def _format_json(data: Dict[str, Any]) -> str:
 
 
 def _parse_languages_argument(raw_languages: Optional[Any]) -> Optional[List[str]]:
-    """允许 languages 参数既可传列表也可传逗号字符串。"""
+    """允许 languages 参数既可传列表也可传空格/逗号分隔字符串。"""
 
     if raw_languages is None:
         return None
     normalized: List[str] = []
+    def _split_entry(entry: str) -> List[str]:
+        replaced = entry.replace(",", " ")
+        return [segment.strip() for segment in replaced.split() if segment.strip()]
+
     if isinstance(raw_languages, str):
-        candidates = [segment.strip() for segment in raw_languages.split(",") if segment.strip()]
+        candidates = _split_entry(raw_languages)
         return candidates or None
     if isinstance(raw_languages, (list, tuple, set)):
         for entry in raw_languages:
             if not entry:
                 continue
             if isinstance(entry, str):
-                parts = [segment.strip() for segment in entry.split(",") if segment.strip()]
+                parts = _split_entry(entry)
                 normalized.extend(parts)
         return normalized or None
     raise ValueError("languages 参数需要是字符串或字符串列表。")
@@ -105,7 +109,7 @@ def run_cli(args: argparse.Namespace) -> None:
 def build_arg_parser() -> argparse.ArgumentParser:
     """构建统一的 CLI 参数解析器。"""
     parser = argparse.ArgumentParser(description="GitHub Trending MCP 服务器")
-    parser.add_argument("--languages", nargs="*", help="筛选的语言列表（以空格分隔）")
+    parser.add_argument("--languages", nargs="*", help="筛选的语言列表（空格或逗号分隔）")
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT, help="需要返回的仓库数量")
     parser.add_argument(
         "--timeframe",
