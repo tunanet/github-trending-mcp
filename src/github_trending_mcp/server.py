@@ -104,7 +104,13 @@ def run_server(args: argparse.Namespace) -> None:
         )
     token = args.auth_token or os.environ.get("MCP_BEARER_TOKEN")
     token_verifier = None
+    auth_settings = None
     if token:
+        try:
+            from mcp.server.auth.settings import AuthSettings
+        except ImportError as exc:
+            raise RuntimeError("启用 Bearer 鉴权需要安装新版 mcp 包。") from exc
+
         class StaticTokenVerifier:
             """无需依赖 mcp 内置类型的 Token 验证器，保证旧版 SDK 也可使用。"""
 
@@ -115,6 +121,11 @@ def run_server(args: argparse.Namespace) -> None:
                 return token_value == self._expected
 
         token_verifier = StaticTokenVerifier(token)
+        issuer = args.auth_issuer or os.environ.get("MCP_AUTH_ISSUER", "https://github-trending-mcp.local/issuer")
+        resource_url = args.auth_resource or os.environ.get(
+            "MCP_AUTH_RESOURCE", "https://github-trending-mcp.local/resource"
+        )
+        auth_settings = AuthSettings(issuer_url=issuer, resource_server_url=resource_url)
     server = FastMCPServer(
         "github-trending-repos-mcp",
         host=args.host,
@@ -125,6 +136,7 @@ def run_server(args: argparse.Namespace) -> None:
         streamable_http_path=args.streamable_http_path,
         token_verifier=token_verifier,
         transport_security=transport_security,
+        auth=auth_settings,
     )
     _register_tools(server)
     server.run(transport=args.transport)
@@ -186,6 +198,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--allowed-origins",
         help="可选：限制访问的 Origin 列表（逗号分隔），可用 MCP_ALLOWED_ORIGINS 环境变量覆盖",
+    )
+    parser.add_argument(
+        "--auth-issuer",
+        help="启用鉴权时用于 AuthSettings 的 issuer_url，可通过 MCP_AUTH_ISSUER 覆盖",
+    )
+    parser.add_argument(
+        "--auth-resource",
+        help="启用鉴权时用于 AuthSettings 的 resource_server_url，可通过 MCP_AUTH_RESOURCE 覆盖",
     )
     return parser
 

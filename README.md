@@ -67,6 +67,7 @@ python -m github_trending_mcp.server --transport streamable-http --host 0.0.0.0 
 ### 安全配置（可选）
 
 - `--auth-token` / 环境变量 `MCP_BEARER_TOKEN`：开启后必须携带 `Authorization: Bearer <token>` 才能调用 MCP 端点，适用于 n8n 等需要基础鉴权的场景。
+- `--auth-issuer`、`--auth-resource`（或 `MCP_AUTH_ISSUER`、`MCP_AUTH_RESOURCE`）：用于配置 FastMCP `AuthSettings` 所需的元数据，不接入真实 OAuth 时可保持默认值。
 - `--allowed-hosts` / `MCP_ALLOWED_HOSTS`：限制请求的 Host（`host:port` 形式，逗号分隔）；例如 `example.com:8000,localhost:8000`。
 - `--allowed-origins` / `MCP_ALLOWED_ORIGINS`：限制浏览器 `Origin` 头，防止 CSRF，一般填 `https://n8n.example.com` 这类地址。
 - 未配置上述参数时保持向后兼容，不做额外校验。若部署到公网，强烈建议至少开启 `--auth-token` 并通过反向代理限制来源。
