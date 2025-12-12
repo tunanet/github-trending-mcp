@@ -49,12 +49,20 @@ def _create_stream(
     """根据 interval 确定是单次推送还是定期推送。"""
 
     async def generator() -> AsyncIterator[str]:
-        while True:
-            payload = await _run_fetch(service, request)
-            yield _format_sse(payload.to_dict())
-            if interval is None:
-                break
-            await asyncio.sleep(interval)
+        try:
+            while True:
+                try:
+                    payload = await _run_fetch(service, request)
+                except RuntimeError as exc:
+                    yield _format_sse({"error": str(exc)}, event="error")
+                    break
+                else:
+                    yield _format_sse(payload.to_dict())
+                if interval is None:
+                    break
+                await asyncio.sleep(interval)
+        finally:
+            service.close()
 
     return generator()
 
@@ -92,26 +100,36 @@ def create_app(
         except ValueError as exc:  # 转换成 HTTP 400
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         service = service_factory()
-        response = await _run_fetch(service, request)
-        return response.to_dict()
+        try:
+            response = await _run_fetch(service, request)
+            return response.to_dict()
+        except RuntimeError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        finally:
+            service.close()
 
     @app.get("/trending/stream")
     async def stream_trending(
         languages: Optional[List[str]] = Query(default=None, description="多值或逗号分隔"),
         limit: Optional[int] = Query(default=None),
         timeframe: Optional[str] = Query(default=None),
+        enable_refresh: bool = Query(
+            default=False,
+            description="是否启用周期刷新（默认为否）",
+        ),
         interval: Optional[float] = Query(
             default=None,
             gt=0,
-            description="可选刷新间隔（秒），不传则仅推送一次",
+            description="刷新间隔（秒），仅在启用周期刷新时生效",
         ),
-        ) -> StreamingResponse:
+    ) -> StreamingResponse:
         try:
             request = validate_inputs(_split_languages(languages), limit, timeframe)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         service = service_factory()
-        stream = _create_stream(service, request, interval)
+        effective_interval = interval if enable_refresh else None
+        stream = _create_stream(service, request, effective_interval)
         headers = {
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",

@@ -52,7 +52,11 @@ class GitHubAPIClient:
         """根据 owner/name 调用 REST API，失败时返回 None。"""
         url = f"{GITHUB_API_URL}/repos/{owner}/{name}"
         logger.debug("Fetching repo details from %s", url)
-        response = self.session.get(url, timeout=self.timeout)
+        try:
+            response = self.session.get(url, timeout=self.timeout)
+        except requests.exceptions.RequestException as exc:
+            logger.error("GitHub API request exception for %s/%s: %s", owner, name, exc)
+            return None
         if response.status_code != 200:
             logger.warning("GitHub API request failed for %s/%s: %s", owner, name, response.status_code)
             return None
@@ -65,6 +69,10 @@ class GitHubAPIClient:
             html_url=data.get("html_url"),
             default_branch=data.get("default_branch"),
         )
+
+    def close(self) -> None:
+        """释放会话资源。"""
+        self.session.close()
 
 
 class TrendingPageClient:
@@ -87,8 +95,12 @@ class TrendingPageClient:
         """抓取页面并转换为 TrendingHTMLRow 列表。"""
         url = self._build_url(language, timeframe)
         logger.debug("Fetching trending page %s", url)
-        response = self.session.get(url, timeout=self.timeout)
-        response.raise_for_status()
+        try:
+            response = self.session.get(url, timeout=self.timeout)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as exc:
+            logger.error("Failed to fetch trending page %s: %s", url, exc)
+            raise RuntimeError("GitHub Trending 页面请求失败") from exc
         return self._parse_html(response.text, language, timeframe)
 
     def _parse_html(self, html: str, language: Optional[str], timeframe: str) -> List[TrendingHTMLRow]:
@@ -141,6 +153,10 @@ class TrendingPageClient:
             )
         return results
 
+    def close(self) -> None:
+        """关闭 HTTP 会话。"""
+        self.session.close()
+
 
 class TrendingService:
     """将 Trending 页面解析与 REST API 数据融合，输出标准结构。"""
@@ -183,7 +199,8 @@ class TrendingService:
                     break
             if len(aggregated) >= limit:
                 break
-            time.sleep(0.5)  # small pause to remain friendly to GitHub
+            # 当存在多语言抓取时，稍作等待以避免触发 GitHub 风控。
+            time.sleep(0.5)
         repos: List[TrendingRepository] = []
         for idx, row in enumerate(aggregated.values(), start=1):
             metadata = self.api_client.fetch_repo(row.owner, row.name)
@@ -220,6 +237,10 @@ class TrendingService:
         }
         return TrendingResponse(repos=repos, metadata=metadata_block)
 
+    def close(self) -> None:
+        """确保底层 HTTP 会话被释放。"""
+        self.page_client.close()
+        self.api_client.close()
 
 def build_service_from_env() -> TrendingService:
     """从环境变量读取 token，构造带鉴权的服务实例。"""

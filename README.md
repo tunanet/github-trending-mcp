@@ -74,7 +74,13 @@ github-trending-mcp-http --host 0.0.0.0 --port 8000
 
   ```bash
   # 持续每 60 秒推送一次
-  curl -N 'http://localhost:8000/trending/stream?languages=python&limit=5&interval=60'
+  curl -N 'http://localhost:8000/trending/stream?languages=python&limit=5'
+  ```
+
+  默认只推送一次。如需周期刷新，可加 `enable_refresh=true&interval=60` 表示每分钟推送一次：
+
+  ```bash
+  curl -N 'http://localhost:8000/trending/stream?languages=python&limit=5&enable_refresh=true&interval=60'
   ```
 
 还可访问 `GET /languages` 查看语言列表；`GET /health` 可用于探活。
