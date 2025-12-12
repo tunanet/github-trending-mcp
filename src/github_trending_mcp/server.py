@@ -105,17 +105,16 @@ def run_server(args: argparse.Namespace) -> None:
     token = args.auth_token or os.environ.get("MCP_BEARER_TOKEN")
     token_verifier = None
     if token:
-        try:
-            from mcp.server.fastmcp import TokenVerifier
-        except ImportError as exc:
-            raise RuntimeError("启用 Bearer 鉴权需要安装新版 mcp 包。") from exc
+        class StaticTokenVerifier:
+            """无需依赖 mcp 内置类型的 Token 验证器，保证旧版 SDK 也可使用。"""
 
-        class StaticTokenVerifier(TokenVerifier):
-            def verify(self, token_value: str, scopes: Optional[List[str]] = None) -> bool:  # type: ignore[override]
-                """简单的常量令牌校验，适合自托管场景。"""
-                return token_value == token
+            def __init__(self, expected: str) -> None:
+                self._expected = expected
 
-        token_verifier = StaticTokenVerifier()
+            def verify(self, token_value: str, scopes: Optional[List[str]] = None) -> bool:  # type: ignore[unused-argument]
+                return token_value == self._expected
+
+        token_verifier = StaticTokenVerifier(token)
     server = FastMCPServer(
         "github-trending-repos-mcp",
         host=args.host,
