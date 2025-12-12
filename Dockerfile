@@ -12,6 +12,7 @@ COPY src ./src
 # 安装依赖并注册可执行脚本
 RUN pip install --no-cache-dir .
 
-# 默认以 HTTP/SSE 模式启动，如需 stdio MCP 可改为下方注释的命令
-CMD ["github-trending-mcp-http", "--host", "0.0.0.0", "--port", "8000"]
-# CMD ["github-trending-mcp"]
+# 默认以 FastMCP SSE 传输启动，便于 n8n 等客户端通过 /sse 对接 MCP
+CMD ["github-trending-mcp", "--transport", "sse", "--host", "0.0.0.0", "--port", "8000"]
+# 若要暴露 HTTP API，可改回下方命令：
+# CMD ["github-trending-mcp-http", "--host", "0.0.0.0", "--port", "8000"]
