@@ -51,14 +51,14 @@ class GitHubAPIClient:
     def fetch_repo(self, owner: str, name: str) -> Optional[RepoMetadata]:
         """根据 owner/name 调用 REST API，失败时返回 None。"""
         url = f"{GITHUB_API_URL}/repos/{owner}/{name}"
-        logger.debug("Fetching repo details from %s", url)
+        logger.debug("开始拉取仓库详情：%s", url)
         try:
             response = self.session.get(url, timeout=self.timeout)
         except requests.exceptions.RequestException as exc:
-            logger.error("GitHub API request exception for %s/%s: %s", owner, name, exc)
+            logger.error("请求 GitHub API 时发生异常 %s/%s：%s", owner, name, exc)
             return None
         if response.status_code != 200:
-            logger.warning("GitHub API request failed for %s/%s: %s", owner, name, response.status_code)
+            logger.warning("请求 GitHub API 失败 %s/%s，状态码：%s", owner, name, response.status_code)
             return None
         data = response.json()
         return RepoMetadata(
@@ -94,12 +94,12 @@ class TrendingPageClient:
     def fetch(self, language: Optional[str], timeframe: str) -> List[TrendingHTMLRow]:
         """抓取页面并转换为 TrendingHTMLRow 列表。"""
         url = self._build_url(language, timeframe)
-        logger.debug("Fetching trending page %s", url)
+        logger.debug("拉取 Trending 页面：%s", url)
         try:
             response = self.session.get(url, timeout=self.timeout)
             response.raise_for_status()
         except requests.exceptions.RequestException as exc:
-            logger.error("Failed to fetch trending page %s: %s", url, exc)
+            logger.error("请求 Trending 页面失败 %s：%s", url, exc)
             raise RuntimeError("GitHub Trending 页面请求失败") from exc
         return self._parse_html(response.text, language, timeframe)
 
@@ -169,10 +169,10 @@ class TrendingService:
         """执行抓取流程：校验参数 -> 抓取 -> 去重 -> 补全 -> 输出。"""
         timeframe = (request.timeframe or DEFAULT_TIMEFRAME).lower()
         if timeframe not in SUPPORTED_TIMEFRAMES:
-            raise ValueError(f"Unsupported timeframe '{request.timeframe}'. Choose one of {SUPPORTED_TIMEFRAMES}.")
+            raise ValueError(f"不支持的时间窗口 '{request.timeframe}'，允许值：{SUPPORTED_TIMEFRAMES}")
         limit = request.limit or DEFAULT_LIMIT
         if limit <= 0:
-            raise ValueError("Limit must be a positive integer")
+            raise ValueError("limit 必须是正整数")
         limit = min(limit, MAX_LIMIT)
         normalized_languages = [lang.lower() for lang in request.languages if lang]
         languages_to_fetch: List[Optional[str]] = []
@@ -182,25 +182,37 @@ class TrendingService:
                     languages_to_fetch.append(None)
                     continue
                 if language not in CURATED_LANGUAGES:
-                    raise ValueError(f"Language '{language}' is not supported by the curated list")
+                    raise ValueError(f"语言 '{language}' 不在策划的支持列表中")
                 languages_to_fetch.append(language)
         else:
             languages_to_fetch.append(None)
         # 以 owner/name 作为唯一键，保持插入顺序以记录排名。
         aggregated: "OrderedDict[str, TrendingHTMLRow]" = OrderedDict()
-        for language in languages_to_fetch:
+        if languages_to_fetch:
+            base, extra = divmod(limit, len(languages_to_fetch))
+        else:
+            base, extra = limit, 0
+        remaining = limit
+        for idx, language in enumerate(languages_to_fetch):
+            if remaining <= 0:
+                break
+            per_language_limit = base + (1 if idx < extra else 0)
+            if per_language_limit <= 0:
+                continue
             rows = self.page_client.fetch(language, timeframe)
+            taken = 0
             for row in rows:
                 key = f"{row.owner.lower()}/{row.name.lower()}"
                 if key in aggregated:
                     continue
                 aggregated[key] = row
-                if len(aggregated) >= limit:
+                taken += 1
+                remaining -= 1
+                if taken >= per_language_limit or remaining <= 0:
                     break
-            if len(aggregated) >= limit:
-                break
             # 当存在多语言抓取时，稍作等待以避免触发 GitHub 风控。
-            time.sleep(0.5)
+            if len(languages_to_fetch) > 1 and remaining > 0:
+                time.sleep(0.5)
         repos: List[TrendingRepository] = []
         for idx, row in enumerate(aggregated.values(), start=1):
             metadata = self.api_client.fetch_repo(row.owner, row.name)

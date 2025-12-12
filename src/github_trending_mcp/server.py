@@ -13,12 +13,13 @@ from .validation import build_language_metadata, validate_inputs
 
 logger = logging.getLogger(__name__)
 
-try:  # pragma: no cover - best-effort optional dependency
-    from mcp.server.fastmcp import FastMCPServer
-    from mcp.types import TextContent
-except Exception:  # pragma: no cover
+try:  # pragma: no cover - 尽力加载的可选依赖
+    try:
+        from mcp.server.fastmcp import FastMCPServer  # type: ignore[attr-defined]
+    except ImportError:  # 若仅存在 FastMCP 类名则降级使用
+        from mcp.server.fastmcp import FastMCP as FastMCPServer  # type: ignore
+except Exception:  # pragma: no cover - 全量捕获避免运行期失败
     FastMCPServer = None  # type: ignore
-    TextContent = None  # type: ignore
 
 
 def _format_json(data: Dict[str, Any]) -> str:
@@ -32,40 +33,43 @@ def _register_tools(server: "FastMCPServer") -> None:
 
     @server.tool(
         name="fetch_trending_repositories",
-        description="Return GitHub Trending repositories as structured JSON."
+        description="返回 GitHub Trending 热门仓库的结构化 JSON 数据。"
     )
     def fetch_trending_tool(
         languages: Optional[List[str]] = None,
         limit: Optional[int] = None,
         timeframe: Optional[str] = None,
-    ) -> List[Any]:
+    ) -> Dict[str, Any]:
         request = validate_inputs(languages, limit, timeframe)
         response = service.fetch(request)
-        payload = response.to_dict()
-        assert TextContent is not None
-        return [TextContent(type="text", text=_format_json(payload))]
+        return response.to_dict()
 
     @server.tool(
         name="list_trending_languages",
-        description="List curated programming languages supported by the GitHub Trending server."
+        description="列出服务器策划支持的编程语言。"
     )
-    def list_languages_tool() -> List[Any]:
-        payload = build_language_metadata()
-        assert TextContent is not None
-        return [TextContent(type="text", text=_format_json(payload))]
+    def list_languages_tool() -> Dict[str, Any]:
+        return build_language_metadata()
 
 
-def run_server() -> None:
-    """启动 stdio MCP 服务器。"""
+def run_server(args: argparse.Namespace) -> None:
+    """启动 MCP 服务器，可切换 stdio、SSE 或 Streamable HTTP。"""
     if FastMCPServer is None:
         raise RuntimeError(
-            "The 'modelcontextprotocol' package is required to expose the MCP server. "
-            "Install it with `pip install modelcontextprotocol`."
+            "运行 MCP 服务器需要先安装 'modelcontextprotocol'，可执行 `pip install modelcontextprotocol`。"
         )
     logging.basicConfig(level=logging.INFO)
-    server = FastMCPServer("github-trending-repos-mcp")
+    server = FastMCPServer(
+        "github-trending-repos-mcp",
+        host=args.host,
+        port=args.port,
+        mount_path=args.mount_path,
+        sse_path=args.sse_path,
+        message_path=args.message_path,
+        streamable_http_path=args.streamable_http_path,
+    )
     _register_tools(server)
-    server.run()
+    server.run(transport=args.transport)
 
 
 def run_cli(args: argparse.Namespace) -> None:
@@ -78,19 +82,39 @@ def run_cli(args: argparse.Namespace) -> None:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """构建统一的 CLI 参数解析器。"""
-    parser = argparse.ArgumentParser(description="GitHub Trending MCP Server")
-    parser.add_argument("--languages", nargs="*", help="Languages to filter (space separated)")
-    parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT, help="Number of repos to fetch")
+    parser = argparse.ArgumentParser(description="GitHub Trending MCP 服务器")
+    parser.add_argument("--languages", nargs="*", help="筛选的语言列表（以空格分隔）")
+    parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT, help="需要返回的仓库数量")
     parser.add_argument(
         "--timeframe",
         default=DEFAULT_TIMEFRAME,
         choices=SUPPORTED_TIMEFRAMES,
-        help="GitHub Trending time window",
+        help="GitHub Trending 使用的时间窗口",
     )
     parser.add_argument(
         "--cli",
         action="store_true",
-        help="Run in CLI mode and print JSON instead of starting the MCP server",
+        help="以 CLI 模式运行并直接输出 JSON，而非启动 MCP 服务器",
+    )
+    parser.add_argument(
+        "--transport",
+        choices=("stdio", "sse", "streamable-http"),
+        default="stdio",
+        help="运行 MCP 服务器时使用的传输协议",
+    )
+    parser.add_argument("--host", default="127.0.0.1", help="供 MCP HTTP 传输监听的主机地址")
+    parser.add_argument("--port", type=int, default=8000, help="供 MCP HTTP 传输监听的端口")
+    parser.add_argument(
+        "--mount-path",
+        default="/",
+        help="SSE 传输的可选路径前缀（便于挂载到反向代理）",
+    )
+    parser.add_argument("--sse-path", default="/sse", help="供 MCP 客户端连接的 SSE 流路径")
+    parser.add_argument("--message-path", default="/messages/", help="SSE 传输使用的消息 POST 路径")
+    parser.add_argument(
+        "--streamable-http-path",
+        default="/mcp",
+        help="使用 streamable-http 传输时的 HTTP Endpoint 路径",
     )
     return parser
 
@@ -102,7 +126,7 @@ def main() -> None:
     if args.cli:
         run_cli(args)
     else:
-        run_server()
+        run_server(args)
 
 
 if __name__ == "__main__":

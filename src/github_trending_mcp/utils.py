@@ -24,7 +24,7 @@ def parse_int(value: Optional[str]) -> Optional[int]:
     try:
         return int(cleaned)
     except ValueError:
-        logger.debug("Failed to parse integer from %s", value)
+        logger.debug("解析整数失败：%s", value)
         return None
 
 

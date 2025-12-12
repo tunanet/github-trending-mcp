@@ -79,7 +79,7 @@ def create_app(
         else:
             service_factory = build_service_from_env
 
-    app = FastAPI(title="GitHub Trending MCP HTTP", version="0.1.0")
+    app = FastAPI(title="GitHub Trending MCP HTTP 服务", version="0.1.0")
 
     @app.get("/health", response_class=JSONResponse)
     def health() -> dict:
@@ -93,7 +93,7 @@ def create_app(
     async def get_trending(
         languages: Optional[List[str]] = Query(default=None, description="多值或逗号分隔"),
         limit: Optional[int] = Query(default=None, description="返回数量"),
-        timeframe: Optional[str] = Query(default=None, description="daily/weekly/monthly"),
+        timeframe: Optional[str] = Query(default=None, description="时间窗口（daily/weekly/monthly）"),
     ) -> dict:
         try:
             request = validate_inputs(_split_languages(languages), limit, timeframe)
@@ -144,7 +144,7 @@ app = create_app()
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="GitHub Trending HTTP/SSE Server")
+    parser = argparse.ArgumentParser(description="GitHub Trending HTTP/SSE 服务")
     parser.add_argument("--host", default="0.0.0.0", help="监听地址")
     parser.add_argument("--port", type=int, default=8000, help="监听端口")
     parser.add_argument("--reload", action="store_true", help="是否自动重载（开发模式）")
